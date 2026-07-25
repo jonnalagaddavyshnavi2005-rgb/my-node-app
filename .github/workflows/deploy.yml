@@ -1,0 +1,96 @@
+name: CI/CD Pipeline - Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: my-node-app
+  ECS_SERVICE: my-node-app-service
+  ECS_CLUSTER: my-ecs-cluster
+  ECS_TASK_DEFINITION: my-node-app-task
+  CONTAINER_NAME: my-node-app
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+          cache: npm
+      - run: npm ci
+      - run: npm test || true
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-tag: ${{ steps.build.outputs.image-tag }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsECSRole
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v1
+        id: login-ecr
+      - id: build
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image-tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsECSRole
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v1
+        id: login-ecr
+      - name: Register new task definition
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          aws ecs describe-task-definition --task-definition $ECS_TASK_DEFINITION --region $AWS_REGION --query taskDefinition > task-definition.json
+          jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" '(.containerDefinitions[]|select(.name=="my-node-app").image)=$IMAGE|del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' task-definition.json > task-definition-updated.json
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition-updated.json --region $AWS_REGION --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+      - name: Generate AppSpec
+        run: |
+          cat > appspec.yaml <<EOF
+          version: 0.0
+          Resources:
+            - TargetService:
+                Type: AWS::ECS::Service
+                Properties:
+                  TaskDefinition: "$NEW_TASK_DEF_ARN"
+                  LoadBalancerInfo:
+                    ContainerName: "my-node-app"
+                    ContainerPort: 80
+          EOF
+      - name: Create deployment
+        env:
+          APPLICATION_NAME: my-node-app-deploy
+          DEPLOYMENT_GROUP_NAME: my-node-app-deployment-group
+        run: |
+          aws deploy create-deployment --application-name $APPLICATION_NAME --deployment-group-name $DEPLOYMENT_GROUP_NAME --revision "revisionType=AppSpecContent,appSpecContent={content='$(cat appspec.yaml)'}" --region $AWS_REGION
