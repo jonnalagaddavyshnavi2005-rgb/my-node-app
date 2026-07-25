@@ -46,7 +46,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AKIA5XH32QPUDYLDT5TM }}:role/GitHubActionsECSRole
+          role-to-assume: arn:aws:iam::${{ secrets.943273444328}}:role/GitHubActionsECSRole
           aws-region: ${{ env.AWS_REGION }}
       - name: Login to ECR
         id: login-ecr
@@ -76,7 +76,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsECSRole
+          role-to-assume: arn:aws:iam::${{ secrets.943273444328}}:role/GitHubActionsECSRole
           aws-region: ${{ env.AWS_REGION }}
       
       - name: Login to ECR
