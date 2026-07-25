@@ -43,11 +43,11 @@ jobs:
       image-tag: ${{ steps.build.outputs.image-tag }}
     steps:
       - uses: actions/checkout@v3
-      -  -name: Configure AWS credentials
-         uses: aws-actions/configure-aws-credentials@v2
-         with:
-           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-           aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
           
       - name: Login to ECR
         id: login-ecr
@@ -71,14 +71,16 @@ jobs:
     needs: build-and-push
     outputs:
       deployment-status: ${{ steps.wait-deployment.outputs.status }}
-    steps:
+      steps:
       - uses: actions/checkout@v3
       
-        -name: Configure AWS credentials
+        - uses: actions/checkout@v3
+
+-      name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-           aws-region: ${{ secrets.AWS_REGION }}
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
       
       - name: Login to ECR
         id: login-ecr
@@ -268,10 +270,10 @@ jobs:
             echo "color=danger" >> $GITHUB_OUTPUT
           fi
       
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsECSRole
+      - - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v2
+          with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       
       - name: Send SNS notification
