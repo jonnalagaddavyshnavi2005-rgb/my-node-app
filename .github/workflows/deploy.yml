@@ -50,6 +50,7 @@ jobs:
           echo "Ref Name: ${{ github.ref_name }}"
           echo "Event: ${{ github.event_name }}"
       - name: Configure AWS credentials
+      
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -78,6 +79,12 @@ jobs:
       deployment-status: ${{ steps.wait-deployment.outputs.status }}
     steps:
       - uses: actions/checkout@v4
+      - name: Print GitHub OIDC Claims
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const token = await core.getIDToken("sts.amazonaws.com");
+      console.log(token);
       
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
